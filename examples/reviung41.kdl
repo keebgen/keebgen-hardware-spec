@@ -1,0 +1,14 @@
+"Reviung 41" designer=gtips {
+  pro-micro {
+    outputs {}
+  }
+  switch 0 1
+  switch 0 2
+  switch 0 3
+  switch 0 4
+}
+
+definitions {
+  pro-micro controller
+  switch switch
+}

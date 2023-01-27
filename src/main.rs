@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use std::{io::Read, path::PathBuf};
 
-use anyhow::Context;
 use clap::Parser;
-use keebgen::{Definition, InlineDefinition, Keyboard};
+use keebgen::{Definition, InlineDefinition, KeyboardSpec};
+use miette::{IntoDiagnostic, WrapErr};
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -12,30 +12,49 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> miette::Result<()> {
     let args = Args::parse();
-
-    let keyboard: Keyboard = if let Some(file) = args.file {
-        let reader = std::fs::OpenOptions::new()
-            .read(true)
-            .open(file)
-            .context("Failed to read definition file")?;
-        serde_json::from_reader(reader).context("Failed to parse definition file")?
-    } else {
-        let reader = std::io::stdin().lock();
-        serde_json::from_reader(reader).context("Failed to parse definition from stdin")?
+    let content = read_input(&args.file)?;
+    let specs = match parse_specs(args.file, &content) {
+        Ok(specs) => specs,
+        Err(error) => {
+            println!("{:?}", miette::Report::new(error));
+            std::process::exit(1);
+        }
     };
 
-    let definitions = retrieve_definitions(&keyboard.definitions[..]).await?;
-
-    println!("Keyboard:\n{keyboard:?}\n\nDefinitions:\n{definitions:?}");
+    println!("{specs:?}");
 
     Ok(())
+}
+
+fn read_input(file: &Option<PathBuf>) -> miette::Result<String> {
+    if let Some(file) = &file {
+        std::fs::read_to_string(file)
+            .into_diagnostic()
+            .wrap_err("Failed to read file content")
+    } else {
+        let mut content = String::new();
+        std::io::stdin()
+            .read_to_string(&mut content)
+            .into_diagnostic()
+            .wrap_err("Failed to read from stdin")?;
+
+        Ok(content)
+    }
+}
+
+fn parse_specs(file: Option<PathBuf>, content: &str) -> miette::Result<Vec<KeyboardSpec>> {
+    if let Some(file) = file {
+        knuffel::parse(&file.as_os_str().to_string_lossy(), content).into_diagnostic()
+    } else {
+        knuffel::parse("stdin", content).into_diagnostic()
+    }
 }
 
 /// Retrueve remove definitions from external git repositories
 async fn retrieve_definitions(
     _definitions: &[Definition],
-) -> anyhow::Result<Vec<InlineDefinition>> {
+) -> miette::Result<Vec<InlineDefinition>> {
     Ok(vec![])
 }
